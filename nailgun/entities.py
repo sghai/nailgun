@@ -50,10 +50,6 @@ else:
 # mixins and fields, and cutting the file down in size further would simply
 # obfuscate the design of the entities.
 
-# This has the same effect as passing `module='nailgun.entities'` to every
-# single OneToOneField and OneToManyField.
-entity_fields.ENTITIES_MODULE = 'nailgun.entities'
-
 
 _FAKE_YUM_REPO = 'http://inecas.fedorapeople.org/fakerepos/zoo3/'
 _OPERATING_SYSTEMS = (
@@ -322,6 +318,17 @@ class ComputeResource(
         api_path = 'api/v2/compute_resources'
         server_modes = ('sat')
 
+    def create_payload(self):
+        """Wrap submitted data within an extra dict.
+
+        For more information, see `Bugzilla #1151220
+        <https://bugzilla.redhat.com/show_bug.cgi?id=1151220>`_.
+
+        """
+        return {
+            u'compute_resource': super(ComputeResource, self).create_payload()
+        }
+
     def create_missing(self):
         """Customize the process of auto-generating instance attributes.
 
@@ -376,6 +383,21 @@ class ComputeResource(
             for field in ('password', 'user', 'uuid'):
                 if field not in vars(self):
                     setattr(self, field, getattr(cls, field).gen_value())
+
+
+class DockerComputeResource(ComputeResource):
+    """A computer resource with a "docker" provider."""
+
+    def __init__(self, server_config=None, **kwargs):
+        """Initialize the ``provider`` and ``url`` instance attributes.
+
+        If the user provides a value for either attribute, then the
+        user-provided attribute will override what is provided here.
+
+        """
+        self.provider = 'docker'
+        self.url = '{0}:2375'.format(self._server_config.url)
+        super(DockerComputeResource, self).__init__(server_config, **kwargs)
 
 
 class ConfigGroup(Entity):
