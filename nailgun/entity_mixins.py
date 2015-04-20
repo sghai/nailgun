@@ -2,12 +2,7 @@
 """Defines a set of mixins that provide tools for interacting with entities."""
 from fauxfactory import gen_choice
 from nailgun import client, config
-from nailgun.entity_fields import (
-    Field,
-    IntegerField,
-    OneToManyField,
-    OneToOneField,
-)
+from nailgun.entity_fields import IntegerField, OneToManyField, OneToOneField
 import threading
 import time
 
@@ -219,6 +214,11 @@ class Entity(object):
         else:
             self._server_config = config.ServerConfig.get()
 
+        # Subclasses usually define a set of fields before calling `super`, but
+        # that's not always the case.
+        if not hasattr(self, '_fields'):
+            self._fields = {}
+
         # Check that a valid set of field values has been passed in.
         fields = self.get_fields()
         if not set(kwargs.keys()).issubset(fields.keys()):
@@ -305,36 +305,20 @@ class Entity(object):
             self._server_config.url + '/',
             self.Meta.api_path  # pylint:disable=no-member
         )
-        if which == 'base' or (which is None and 'id' not in vars(self)):
+        if which == 'base' or (which is None and not hasattr(self, 'id')):
             return base
-        elif (which == 'self' or which is None) and 'id' in vars(self):
+        elif (which == 'self' or which is None) and not hasattr(self, 'id'):
             return urljoin(base + '/', str(self.id))
         raise NoSuchPathError
 
-    @classmethod
-    def get_fields(cls):
+    def get_fields(self):
         """Return all fields defined on the current class.
 
         :return: A dict mapping class attribute names to
             :class`nailgun.entity_fields.Field` objects.
 
         """
-        # When `dir` is called on "a type or class object, the list contains
-        # the names of its attributes, and recursively of the attributes of its
-        # bases." In constrast, `vars(cls)` returns only the attributes of
-        # `cls` while ignoring all parent classes. Thus, this fails for child
-        # classes:
-        #
-        #     for key, val in vars(cls).items():
-        #         if isinstance(val, Field):
-        #             attrs[key] = val
-        #
-        attrs = {}
-        for field_name in dir(cls):
-            field = getattr(cls, field_name)
-            if isinstance(field, Field):
-                attrs[field_name] = field
-        return attrs
+        return self._fields.copy()
 
     def get_values(self):
         """Return the value of each field on the current object.
@@ -543,7 +527,7 @@ class EntityCreateMixin(object):
 
         """
         for field_name, field in self.get_fields().items():
-            if field.required and field_name not in vars(self):
+            if field.required and not hasattr(self, field_name):
                 # Most `gen_value` methods return a value such as an integer,
                 # string or dictionary, but OneTo{One,Many}Field.gen_value
                 # returns the referenced class. Thus, for foreign key fields,
